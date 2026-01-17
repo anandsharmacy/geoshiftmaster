@@ -1,0 +1,28 @@
+# System files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Editor directories
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+Thumbs.db
+Desktop.ini
+
+# Dependencies (if added later)
+node_modules/
+.npm/
+
+# Build outputs (if any)
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*

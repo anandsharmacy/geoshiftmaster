@@ -1,0 +1,80 @@
+/* Animations */
+
+/* Keyframes */
+@keyframes scrollDown {
+    0% {
+        transform: translateY(0) scaleY(1);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translateY(15px) scaleY(0);
+        opacity: 0;
+    }
+}
+
+@keyframes glitch {
+    0% {
+        text-shadow: 2px 2px var(--color-primary), -2px -2px var(--color-accent);
+    }
+
+    25% {
+        text-shadow: -2px 2px var(--color-secondary), 2px -2px var(--color-primary);
+    }
+
+    50% {
+        text-shadow: 2px -2px var(--color-primary), -2px 2px var(--color-secondary);
+    }
+
+    75% {
+        text-shadow: -2px -2px var(--color-accent), 2px 2px var(--color-primary);
+    }
+
+    100% {
+        text-shadow: 2px 2px var(--color-primary), -2px -2px var(--color-accent);
+    }
+}
+
+.glitch-text {
+    position: relative;
+    animation: glitch 3s infinite alternate-reverse;
+}
+
+/* Reveal Animations */
+.reveal {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: all 0.8s cubic-bezier(0.5, 0, 0, 1);
+}
+
+.reveal.active {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.reveal-stagger>* {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: all 0.5s ease-out;
+}
+
+.reveal-stagger.active>* {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.reveal-stagger.active>*:nth-child(1) {
+    transition-delay: 0.1s;
+}
+
+.reveal-stagger.active>*:nth-child(2) {
+    transition-delay: 0.2s;
+}
+
+.reveal-stagger.active>*:nth-child(3) {
+    transition-delay: 0.3s;
+}
+
+.reveal-stagger.active>*:nth-child(4) {
+    transition-delay: 0.4s;
+}

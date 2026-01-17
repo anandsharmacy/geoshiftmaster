@@ -1,0 +1,39 @@
+/* Variables and Theme Config */
+:root {
+    /* Colors */
+    --color-bg-main: #050510;
+    --color-bg-darker: #02020a;
+    --color-bg-card: rgba(255, 255, 255, 0.03);
+    
+    --color-text-main: #ffffff;
+    --color-text-muted: #a0a0b0;
+    
+    --color-primary: #00f3ff; /* Electric Blue */
+    --color-secondary: #bc13fe; /* Neon Purple */
+    --color-accent: #ff0055; /* Bright Magenta */
+    
+    --color-border: rgba(255, 255, 255, 0.1);
+    
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+    --gradient-dark: linear-gradient(to bottom, var(--color-bg-main), var(--color-bg-darker));
+    
+    /* Typography */
+    --font-heading: 'Orbitron', sans-serif;
+    --font-body: 'Inter', sans-serif;
+    
+    /* Spacing */
+    --container-width: 1200px;
+    --spacing-xs: 0.5rem;
+    --spacing-sm: 1rem;
+    --spacing-md: 2rem;
+    --spacing-lg: 4rem;
+    --spacing-xl: 6rem;
+    
+    /* Effects */
+    --shadow-glow-primary: 0 0 20px rgba(0, 243, 255, 0.3);
+    --shadow-glow-secondary: 0 0 20px rgba(188, 19, 254, 0.3);
+    --backdrop-blur: 10px;
+    --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-smooth: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
