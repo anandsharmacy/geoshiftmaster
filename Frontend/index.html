@@ -1,0 +1,2370 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GEOSIFT — Global Relocation Engine</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&display=swap"
+        rel="stylesheet" />
+    <style>
+        /* ── DESIGN TOKENS ─────────────────────────────────────── */
+        :root {
+            --abyss: #080C10;
+            --slate-dark: #111620;
+            --surface: #1C2230;
+            --surface-raised: #252E3F;
+            --ink: #8A95A8;
+            --parchment: #D8DDE6;
+            --white: #F2F5FA;
+            --meridian: #3ECFB2;
+            --atlas: #E8C84A;
+            --risk-red: #E05C5C;
+            --safe-green: #52D68A;
+            --grid-line: rgba(62, 207, 178, 0.07);
+            --contour: rgba(216, 221, 230, 0.04);
+            --font-display: 'Syne', sans-serif;
+            --font-mono: 'DM Mono', monospace;
+            --radius: 6px;
+            --transition: 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        .antigravity-reveal {
+            opacity: 0;
+            transform: translateY(24px);
+            transition: opacity 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                transform 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            will-change: transform, opacity;
+        }
+
+        .antigravity-reveal.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
+
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            background: var(--abyss);
+            color: var(--parchment);
+            font-family: var(--font-mono);
+            font-size: 14px;
+            line-height: 1.6;
+            min-height: 100vh;
+            overflow-x: clip;
+        }
+
+        /* ── TOPOGRAPHIC BACKGROUND ────────────────────────────── */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                repeating-linear-gradient(0deg, var(--contour) 0, var(--contour) 1px, transparent 1px, transparent 60px),
+                repeating-linear-gradient(90deg, var(--contour) 0, var(--contour) 1px, transparent 1px, transparent 60px);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* ── LAYOUT ─────────────────────────────────────────────── */
+        .engine-wrapper {
+            position: relative;
+            z-index: 1;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* ── HEADER ─────────────────────────────────────────────── */
+        .site-header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(8, 12, 16, 0.85);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--grid-line);
+        }
+
+        .header-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo {
+            font-family: var(--font-display);
+            font-size: 18px;
+            font-weight: 800;
+            color: var(--white);
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        .logo span {
+            color: var(--meridian);
+        }
+
+        .header-meta {
+            font-size: 11px;
+            color: var(--ink);
+            letter-spacing: 0.08em;
+        }
+
+        /* ── CINEMATIC HERO SEQUENCE ────────────────────────────── */
+        .cinematic-hero {
+            position: relative;
+            height: 500vh;
+            background: var(--abyss);
+        }
+
+        .sticky-container {
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            width: 100%;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+        }
+
+        #hero-canvas {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100%;
+            height: 100%;
+            opacity: 0.8;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* ── SCRIM OVERLAY ─────────────────────────────────────── */
+        .hero-scrim {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(to bottom,
+                    rgba(8, 12, 16, 0.2) 0%,
+                    rgba(8, 12, 16, 0.6) 50%,
+                    rgba(8, 12, 16, 0.9) 100%);
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        .hero-content {
+            max-width: 680px;
+            position: relative;
+            z-index: 2;
+            padding: 40px;
+            margin: 0 auto;
+            width: 100%;
+            opacity: 0;
+            transform: translateY(24px);
+            transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+            pointer-events: none;
+
+            /* Glassmorphism */
+            background: rgba(17, 22, 32, 0.4);
+            border: 1px solid rgba(216, 221, 230, 0.08);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-radius: var(--radius);
+            box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
+        }
+
+        @media (max-width: 768px) {
+            .hero-content {
+                padding: 24px;
+                background: rgba(17, 22, 32, 0.6);
+            }
+        }
+
+        .hero-content.visible {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+
+        .hero-eyebrow {
+            font-size: 11px;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: var(--meridian);
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .hero-eyebrow::before {
+            content: '';
+            display: inline-block;
+            width: 32px;
+            height: 1px;
+            background: var(--meridian);
+        }
+
+        .hero-headline {
+            font-family: var(--font-display);
+            font-size: clamp(48px, 7vw, 88px);
+            font-weight: 800;
+            line-height: 0.95;
+            color: var(--white);
+            text-transform: uppercase;
+            letter-spacing: -0.02em;
+            margin-bottom: 32px;
+            filter: drop-shadow(0 4px 16px rgba(0, 0, 0, 0.6));
+        }
+
+        .hero-headline em {
+            font-style: normal;
+            color: var(--meridian);
+            display: block;
+        }
+
+        .hero-sub {
+            font-size: 16px;
+            font-weight: 500;
+            color: #FAFAFA;
+            /* text-neutral-50 equivalent */
+            max-width: 460px;
+            line-height: 1.7;
+            margin-bottom: 40px;
+            filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.8));
+        }
+
+        .hero-cta {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 16px 32px;
+            border: 1px solid var(--meridian);
+            color: var(--meridian);
+            background: transparent;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            cursor: pointer;
+            border-radius: var(--radius);
+            transition: var(--transition);
+            text-decoration: none;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-cta::before {
+            content: '';
+            position: absolute;
+            left: -100%;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(62, 207, 178, 0.1);
+            transition: left 0.4s ease;
+        }
+
+        .hero-cta:hover::before {
+            left: 0;
+        }
+
+        .hero-cta:hover {
+            box-shadow: 0 0 24px rgba(62, 207, 178, 0.2);
+        }
+
+        .hero-coords {
+            margin-top: 64px;
+            padding-top: 24px;
+            border-top: 1px solid var(--grid-line);
+            font-size: 12px;
+            letter-spacing: 0.14em;
+            color: var(--ink);
+            text-transform: uppercase;
+        }
+
+        /* ── BRAND STORY ────────────────────────────────────────── */
+        .brand-story {
+            padding: 120px 0;
+            position: relative;
+        }
+
+        .story-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 64px;
+            align-items: center;
+        }
+
+        @media (max-width: 900px) {
+            .story-grid {
+                grid-template-columns: 1fr;
+                gap: 48px;
+            }
+        }
+
+        .story-content {
+            position: relative;
+        }
+
+        .story-idx {
+            position: absolute;
+            top: -64px;
+            left: -24px;
+            font-family: var(--font-display);
+            font-size: 160px;
+            font-weight: 800;
+            line-height: 1;
+            color: var(--white);
+            opacity: 0.03;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .story-title {
+            font-family: var(--font-display);
+            font-size: clamp(32px, 4vw, 48px);
+            font-weight: 700;
+            color: var(--white);
+            margin-bottom: 24px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .story-body {
+            font-size: 16px;
+            color: var(--ink);
+            line-height: 1.8;
+            max-width: 480px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .story-diagram {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 320px;
+            padding: 32px;
+            background: var(--surface);
+            border: 1px solid var(--grid-line);
+            border-radius: var(--radius);
+        }
+
+        .diagram-svg {
+            width: 100%;
+            max-width: 360px;
+            overflow: visible;
+        }
+
+        .diagram-line {
+            stroke: rgba(62, 207, 178, 0.3);
+            stroke-width: 1.5;
+            fill: none;
+            stroke-dasharray: 400;
+            stroke-dashoffset: 400;
+            transition: stroke-dashoffset 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        .diagram-svg.visible .diagram-line {
+            stroke-dashoffset: 0;
+        }
+
+        .diagram-node {
+            fill: var(--slate-dark);
+            stroke: var(--meridian);
+            stroke-width: 1.5;
+        }
+
+        .diagram-node.active {
+            fill: var(--meridian);
+        }
+
+        .diagram-label {
+            fill: var(--ink);
+            font-family: var(--font-mono);
+            font-size: 10px;
+            letter-spacing: 0.1em;
+            text-anchor: end;
+        }
+
+        .diagram-label.center {
+            text-anchor: middle;
+            font-weight: 700;
+            fill: var(--white);
+        }
+
+        /* ── PILLARS / SCORING ARCHITECTURE ─────────────────────── */
+        .pillars {
+            padding: 80px 0 120px;
+            position: relative;
+        }
+
+        .pillars-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+            align-items: center;
+        }
+
+        @media (max-width: 900px) {
+            .pillars-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .pillar-card {
+            background: var(--surface);
+            border: 1px solid var(--grid-line);
+            border-left: 3px solid var(--meridian);
+            border-radius: var(--radius);
+            padding: 40px 32px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .pillar-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(62, 207, 178, 0.1) inset;
+            border-left-width: 4px;
+        }
+
+        .pillar-card:nth-child(2) {
+            transform: translateY(-24px);
+        }
+
+        .pillar-card:nth-child(2):hover {
+            transform: translateY(-32px);
+        }
+
+        @media (max-width: 900px) {
+            .pillar-card:nth-child(2) {
+                transform: none;
+            }
+
+            .pillar-card:nth-child(2):hover {
+                transform: translateY(-8px);
+            }
+        }
+
+        .pillar-icon {
+            width: 40px;
+            height: 40px;
+            color: var(--meridian);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .pillar-title {
+            font-family: var(--font-display);
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--white);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .pillar-desc {
+            font-size: 14px;
+            color: var(--ink);
+            line-height: 1.6;
+        }
+
+        .pillar-score {
+            margin-top: auto;
+            padding-top: 24px;
+            border-top: 1px solid var(--grid-line);
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+        }
+
+        .pillar-score-label {
+            font-size: 10px;
+            letter-spacing: 0.16em;
+            color: var(--ink);
+            text-transform: uppercase;
+        }
+
+        .pillar-score-value {
+            font-family: var(--font-display);
+            font-size: 32px;
+            font-weight: 800;
+            color: var(--meridian);
+            line-height: 1;
+        }
+
+        /* ── ENGINE SECTION ─────────────────────────────────────── */
+        .engine-section {
+            padding: 120px 0;
+        }
+
+        .section-label {
+            font-size: 12px;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--meridian);
+            margin-bottom: 48px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .section-label::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--grid-line);
+            max-width: 200px;
+        }
+
+        .engine-panel {
+            background: var(--surface);
+            border: 1px solid rgba(62, 207, 178, 0.12);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
+        }
+
+        .engine-grid {
+            display: grid;
+            grid-template-columns: 400px 1fr;
+            min-height: 560px;
+        }
+
+        @media (max-width: 900px) {
+            .engine-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* ── INPUT PANEL ────────────────────────────────────────── */
+        .input-panel {
+            background: var(--slate-dark);
+            border-right: 1px solid rgba(62, 207, 178, 0.1);
+            padding: 40px 32px;
+            display: flex;
+            flex-direction: column;
+            gap: 32px;
+        }
+
+        .panel-title {
+            font-family: var(--font-display);
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--white);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .panel-title .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--meridian);
+            box-shadow: 0 0 8px var(--meridian);
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-dot {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.5;
+                transform: scale(0.7);
+            }
+        }
+
+        .field-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .field-label {
+            font-size: 12px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--ink);
+        }
+
+        /* Country Input */
+        .country-input-wrap {
+            background: var(--surface);
+            border: 1px solid rgba(62, 207, 178, 0.15);
+            border-radius: var(--radius);
+            padding: 8px 16px;
+            cursor: text;
+            transition: border-color var(--transition);
+            min-height: 48px;
+            position: relative;
+        }
+
+        .country-input-wrap:focus-within {
+            border-color: rgba(62, 207, 178, 0.5);
+            box-shadow: 0 0 0 3px rgba(62, 207, 178, 0.06);
+        }
+
+        .tags-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(62, 207, 178, 0.1);
+            border: 1px solid rgba(62, 207, 178, 0.3);
+            color: var(--meridian);
+            border-radius: 4px;
+            padding: 4px 8px 4px 16px;
+            font-size: 12px;
+            letter-spacing: 0.04em;
+            animation: tag-in 0.2s ease;
+        }
+
+        @keyframes tag-in {
+            from {
+                opacity: 0;
+                transform: scale(0.85);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .tag-remove {
+            background: none;
+            border: none;
+            color: rgba(62, 207, 178, 0.5);
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+            padding: 0;
+            transition: color 0.2s;
+            display: flex;
+            align-items: center;
+        }
+
+        .tag-remove:hover {
+            color: var(--risk-red);
+        }
+
+        .country-text-input {
+            background: none;
+            border: none;
+            outline: none;
+            color: var(--white);
+            font-family: var(--font-mono);
+            font-size: 14px;
+            width: 100%;
+            caret-color: var(--meridian);
+            padding: 8px 0;
+        }
+
+        .country-text-input::placeholder {
+            color: var(--ink);
+        }
+
+        .country-dropdown {
+            position: absolute;
+            top: calc(100% + 8px);
+            left: 0;
+            right: 0;
+            background: var(--surface-raised);
+            border: 1px solid rgba(62, 207, 178, 0.2);
+            border-radius: var(--radius);
+            z-index: 50;
+            max-height: 200px;
+            overflow-y: auto;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        .country-dropdown:empty {
+            display: none;
+        }
+
+        .dropdown-item {
+            padding: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-size: 14px;
+            color: var(--parchment);
+            transition: background 0.15s;
+            letter-spacing: 0.03em;
+        }
+
+        .dropdown-item:hover {
+            background: rgba(62, 207, 178, 0.08);
+            color: var(--white);
+        }
+
+        .dropdown-item .iso {
+            font-size: 12px;
+            color: var(--ink);
+            letter-spacing: 0.1em;
+            min-width: 32px;
+        }
+
+        .input-hint {
+            font-size: 12px;
+            color: var(--ink);
+            opacity: 0.7;
+            margin-top: 8px;
+        }
+
+        /* Pills */
+        .pill-group {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .pill {
+            flex: 1;
+            min-width: 80px;
+            padding: 8px 16px;
+            background: var(--surface);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: var(--radius);
+            color: var(--ink);
+            font-family: var(--font-mono);
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            cursor: pointer;
+            text-align: center;
+            text-transform: uppercase;
+            transition: var(--transition);
+        }
+
+        .pill:hover {
+            border-color: rgba(62, 207, 178, 0.3);
+            color: var(--parchment);
+        }
+
+        .pill.active {
+            background: rgba(62, 207, 178, 0.1);
+            border-color: var(--meridian);
+            color: var(--meridian);
+            box-shadow: 0 0 16px rgba(62, 207, 178, 0.1);
+        }
+
+        /* Submit */
+        .submit-btn {
+            width: 100%;
+            padding: 16px 24px;
+            background: var(--meridian);
+            color: var(--abyss);
+            border: none;
+            border-radius: var(--radius);
+            font-family: var(--font-mono);
+            font-size: 14px;
+            font-weight: 500;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            position: relative;
+            overflow: hidden;
+            margin-top: auto;
+        }
+
+        .submit-btn:hover:not(:disabled) {
+            background: #5dd9c0;
+            box-shadow: 0 8px 24px rgba(62, 207, 178, 0.3);
+            transform: translateY(-1px);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .submit-btn .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(8, 12, 16, 0.3);
+            border-top-color: var(--abyss);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            display: none;
+        }
+
+        .submit-btn.loading .spinner {
+            display: block;
+        }
+
+        .submit-btn.loading .btn-text {
+            opacity: 0.7;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .validation-msg {
+            font-size: 12px;
+            color: var(--risk-red);
+            min-height: 16px;
+            letter-spacing: 0.04em;
+            transition: opacity 0.2s;
+            margin-top: 8px;
+        }
+
+        /* ── RESULTS PANEL ──────────────────────────────────────── */
+        .results-panel {
+            padding: 40px 32px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            position: relative;
+        }
+
+        /* Empty State */
+        .empty-state {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            opacity: 0.4;
+        }
+
+        .empty-icon {
+            width: 64px;
+            height: 64px;
+            border: 1px solid var(--ink);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .empty-icon svg {
+            stroke: var(--ink);
+        }
+
+        .empty-state p {
+            font-size: 14px;
+            color: var(--ink);
+            letter-spacing: 0.08em;
+            text-align: center;
+        }
+
+        /* Results header */
+        .results-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--grid-line);
+        }
+
+        .results-title {
+            font-size: 12px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--meridian);
+        }
+
+        .results-count {
+            font-size: 12px;
+            color: var(--ink);
+        }
+
+        /* Result Cards */
+        .result-card {
+            background: var(--surface-raised);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 8px;
+            padding: 24px;
+            position: relative;
+            transition: border-color var(--transition), box-shadow var(--transition);
+            animation: card-slide-in 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+        }
+
+        @keyframes card-slide-in {
+            from {
+                opacity: 0;
+                transform: translateY(16px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .result-card:nth-child(2) {
+            animation-delay: 0.08s;
+        }
+
+        .result-card:nth-child(3) {
+            animation-delay: 0.16s;
+        }
+
+        .result-card:nth-child(4) {
+            animation-delay: 0.24s;
+        }
+
+        .result-card:nth-child(5) {
+            animation-delay: 0.32s;
+        }
+
+        .result-card:hover {
+            border-color: rgba(62, 207, 178, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .result-card.rank-1 {
+            border-left: 4px solid var(--atlas);
+        }
+
+        .result-card.rank-2 {
+            border-left: 4px solid #8C9AAE;
+        }
+
+        .result-card.rank-3 {
+            border-left: 4px solid #7A6547;
+        }
+
+        .card-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            gap: 16px;
+        }
+
+        .card-identity {
+            flex: 1;
+        }
+
+        .rank-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .rank-badge.rank-1 {
+            color: var(--atlas);
+        }
+
+        .rank-badge.rank-2 {
+            color: #8C9AAE;
+        }
+
+        .rank-badge.rank-3 {
+            color: #A0895E;
+        }
+
+        .rank-badge.rank-other {
+            color: var(--ink);
+        }
+
+        .rank-badge svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .country-name {
+            font-family: var(--font-display);
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--white);
+            letter-spacing: 0.02em;
+        }
+
+        .country-code {
+            font-size: 12px;
+            color: var(--ink);
+            letter-spacing: 0.12em;
+            margin-top: 4px;
+        }
+
+        /* Score Dial */
+        .score-dial-wrap {
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .score-dial {
+            width: 72px;
+            height: 72px;
+            position: relative;
+        }
+
+        .score-dial svg {
+            transform: rotate(-90deg);
+        }
+
+        .dial-bg {
+            stroke: rgba(255, 255, 255, 0.06);
+        }
+
+        .dial-fill {
+            stroke: var(--meridian);
+            stroke-linecap: round;
+            transition: stroke-dashoffset 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        .dial-score-text {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-display);
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--white);
+            line-height: 1;
+        }
+
+        .dial-label-text {
+            font-size: 10px;
+            color: var(--ink);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+
+        /* Sub Scores */
+        .sub-scores {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .sub-score-row {
+            display: grid;
+            grid-template-columns: 136px 1fr 40px;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .sub-label {
+            font-size: 12px;
+            color: var(--ink);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        .bar-track {
+            height: 8px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            width: 0%;
+            transition: width 1s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        .bar-fill.travel_risk {
+            background: var(--meridian);
+        }
+
+        .bar-fill.health_infra {
+            background: var(--safe-green);
+        }
+
+        .bar-fill.env_stability {
+            background: var(--atlas);
+        }
+
+        .sub-value {
+            font-size: 12px;
+            color: var(--parchment);
+            text-align: right;
+            font-weight: 500;
+        }
+
+        /* Partial data warning */
+        .partial-warning {
+            font-size: 12px;
+            color: var(--atlas);
+            letter-spacing: 0.06em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        /* Explanation */
+        .explanation {
+            font-size: 14px;
+            color: var(--ink);
+            line-height: 1.65;
+            padding-top: 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            font-style: italic;
+        }
+
+        /* ── ERROR STATE ────────────────────────────────────────── */
+        .error-state {
+            background: rgba(224, 92, 92, 0.07);
+            border: 1px solid rgba(224, 92, 92, 0.25);
+            border-radius: 8px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: flex-start;
+        }
+
+        .error-title {
+            font-size: 12px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--risk-red);
+            font-weight: 500;
+        }
+
+        .error-msg {
+            font-size: 14px;
+            color: var(--ink);
+        }
+
+        /* ── METADATA STRIP ─────────────────────────────────────── */
+        .metadata-strip {
+            margin-top: auto;
+            padding-top: 16px;
+            border-top: 1px solid var(--grid-line);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            font-size: 12px;
+            color: var(--ink);
+            letter-spacing: 0.08em;
+        }
+
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .meta-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .meta-dot.hit {
+            background: var(--safe-green);
+        }
+
+        .meta-dot.miss {
+            background: var(--ink);
+            opacity: 0.4;
+        }
+
+        /* ── LOADING OVERLAY ────────────────────────────────────── */
+        .loading-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(8, 12, 16, 0.7);
+            backdrop-filter: blur(4px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 24px;
+            border-radius: 0 8px 8px 0;
+            z-index: 20;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        .loading-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .loading-ring {
+            width: 48px;
+            height: 48px;
+            border: 2px solid rgba(62, 207, 178, 0.15);
+            border-top-color: var(--meridian);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        .loading-text {
+            font-size: 12px;
+            color: var(--meridian);
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            animation: blink 1.4s ease-in-out infinite;
+        }
+
+        @keyframes blink {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.4;
+            }
+        }
+
+        /* ── SCROLLBAR ──────────────────────────────────────────── */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--abyss);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--surface-raised);
+            border-radius: 4px;
+        }
+
+        /* ── CTA SECTION ────────────────────────────────────────── */
+        .cta-section {
+            padding: 160px 0;
+            background: radial-gradient(circle at center, var(--surface) 0%, var(--abyss) 100%);
+            position: relative;
+            text-align: center;
+            overflow: hidden;
+        }
+
+        .cta-map-bg {
+            position: absolute;
+            inset: 0;
+            opacity: 0.05;
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 500"><path d="M100 200 Q 150 150 200 250 T 400 200" stroke="%233ECFB2" fill="none"/></svg>');
+            background-size: cover;
+            background-position: center;
+            pointer-events: none;
+        }
+
+        .cta-content {
+            position: relative;
+            z-index: 2;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        .cta-headline {
+            font-family: var(--font-display);
+            font-size: clamp(32px, 5vw, 56px);
+            font-weight: 800;
+            color: var(--white);
+            line-height: 1.1;
+            text-transform: uppercase;
+            margin-bottom: 16px;
+        }
+
+        .cta-sub {
+            font-size: 16px;
+            color: var(--ink);
+            margin-bottom: 48px;
+        }
+
+        .cta-form {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 24px;
+            max-width: 480px;
+            margin: 0 auto;
+        }
+
+        .cta-input-group {
+            width: 100%;
+            position: relative;
+            background: var(--abyss);
+            border: 1px solid var(--grid-line);
+            border-radius: var(--radius);
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .cta-input-group::before {
+            content: '>';
+            color: var(--meridian);
+            font-family: var(--font-mono);
+            font-size: 14px;
+        }
+
+        .cta-input {
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--white);
+            font-family: var(--font-mono);
+            font-size: 14px;
+            width: 100%;
+        }
+
+        .cta-input::placeholder {
+            color: var(--ink);
+            opacity: 0.5;
+        }
+
+        .cta-input:focus {
+            caret-color: var(--meridian);
+        }
+
+        .cta-btn {
+            width: 100%;
+            padding: 16px 32px;
+            background: var(--white);
+            color: var(--abyss);
+            border: none;
+            border-radius: var(--radius);
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .cta-btn:hover {
+            background: var(--parchment);
+            transform: translateY(-2px);
+        }
+
+        .trust-signals {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-top: 32px;
+            font-size: 10px;
+            letter-spacing: 0.1em;
+            color: var(--ink);
+            text-transform: uppercase;
+        }
+
+        /* ── FOOTER ─────────────────────────────────────────────── */
+        .site-footer {
+            margin-top: 0;
+            background: var(--abyss);
+        }
+
+        .footer-top-rule {
+            height: 1px;
+            width: 100%;
+            background: var(--meridian);
+            opacity: 0.3;
+        }
+
+        .footer-grid {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 64px 24px;
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr;
+            gap: 48px;
+        }
+
+        @media (max-width: 768px) {
+            .footer-grid {
+                grid-template-columns: 1fr 1fr;
+                gap: 32px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .footer-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .footer-brand .logo {
+            margin-bottom: 8px;
+            font-size: 20px;
+        }
+
+        .footer-tagline {
+            font-size: 11px;
+            letter-spacing: 0.12em;
+            color: var(--ink);
+            text-transform: uppercase;
+            margin-bottom: 16px;
+        }
+
+        .footer-desc {
+            font-size: 12px;
+            color: var(--ink);
+            line-height: 1.6;
+            max-width: 240px;
+        }
+
+        .footer-col-title {
+            font-family: var(--font-display);
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--white);
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            margin-bottom: 24px;
+        }
+
+        .footer-nav {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .footer-nav a {
+            color: var(--ink);
+            text-decoration: none;
+            font-size: 13px;
+            transition: color var(--transition);
+        }
+
+        .footer-nav a:hover {
+            color: var(--meridian);
+        }
+
+        .social-links {
+            display: flex;
+            gap: 16px;
+            margin-top: 24px;
+        }
+
+        .social-links a {
+            color: var(--ink);
+            text-decoration: none;
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            transition: color var(--transition);
+        }
+
+        .social-links a:hover {
+            color: var(--meridian);
+        }
+
+        .social-links a::before {
+            content: '[';
+            margin-right: 2px;
+            opacity: 0.5;
+        }
+
+        .social-links a::after {
+            content: ']';
+            margin-left: 2px;
+            opacity: 0.5;
+        }
+
+        .footer-bottom {
+            border-top: 1px solid var(--grid-line);
+        }
+
+        .footer-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .footer-copy {
+            font-size: 12px;
+            color: var(--ink);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+
+        .footer-ticker {
+            font-size: 12px;
+            color: var(--ink);
+            letter-spacing: 0.08em;
+            overflow: hidden;
+            max-width: 480px;
+        }
+
+        .ticker-inner {
+            display: inline-block;
+            white-space: nowrap;
+            animation: ticker 18s linear infinite;
+        }
+
+        @keyframes ticker {
+            from {
+                transform: translateX(100%);
+            }
+
+            to {
+                transform: translateX(-100%);
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- HEADER -->
+    <header class="site-header">
+        <div class="header-inner">
+            <div class="logo">GEO<span>SIFT</span></div>
+            <div class="header-meta">RELOCATION ENGINE V2.1 · GLOBAL COVERAGE: 195 NATIONS</div>
+        </div>
+    </header>
+
+    <main>
+        <!-- CINEMATIC HERO -->
+        <section class="cinematic-hero" id="cinematic-hero">
+            <div class="sticky-container">
+                <canvas id="hero-canvas"></canvas>
+                <div class="hero-scrim"></div>
+
+                <div class="engine-wrapper" style="width:100%; position: absolute; z-index: 2;">
+                    <div class="hero-content">
+                        <div class="hero-eyebrow">Global Relocation Intelligence</div>
+                        <h1 class="hero-headline">
+                            RELOCATE<br>
+                            WITH<br>
+                            <em>PRECISION.</em>
+                        </h1>
+                        <p class="hero-sub">Score and rank any destination against real geopolitical, health, and
+                            environmental data. Stop guessing. Start moving.</p>
+                        <a href="#engine" class="hero-cta">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <polyline points="13 17 18 12 13 7" />
+                                <polyline points="6 17 11 12 6 7" />
+                            </svg>
+                            RUN YOUR ANALYSIS
+                        </a>
+                        <div class="hero-coords" style="margin-top: 32px;">LAT 0°00'N · LON 0°00'E · REAL-TIME SCORING ·
+                            MULTI-FACTOR ENGINE</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- BRAND STORY -->
+        <section class="brand-story antigravity-reveal">
+            <div class="engine-wrapper">
+                <div class="story-grid">
+                    <div class="story-content">
+                        <div class="story-idx">001</div>
+                        <h2 class="story-title">Intelligence,<br>not intuition.</h2>
+                        <p class="story-body">GEOSIFT replaces gut-feel with a continuous intelligence engine. By
+                            synthesizing real-time geopolitical shifts, healthcare infrastructure depth, and
+                            environmental stability, we generate a precision composite score for anywhere on earth.</p>
+                    </div>
+                    <div class="story-diagram">
+                        <svg class="diagram-svg" viewBox="0 0 360 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <!-- Flow lines -->
+                            <path class="diagram-line" d="M 40 40 L 160 40 Q 180 40 180 60 L 180 100" />
+                            <path class="diagram-line" d="M 40 100 L 180 100" />
+                            <path class="diagram-line" d="M 40 160 L 160 160 Q 180 160 180 140 L 180 100" />
+                            <path class="diagram-line" d="M 180 100 L 280 100" />
+
+                            <!-- Nodes -->
+                            <circle cx="40" cy="40" r="4" class="diagram-node" />
+                            <circle cx="40" cy="100" r="4" class="diagram-node" />
+                            <circle cx="40" cy="160" r="4" class="diagram-node" />
+
+                            <circle cx="180" cy="100" r="6" class="diagram-node active" />
+                            <circle cx="280" cy="100" r="8" class="diagram-node active"
+                                style="fill:var(--abyss); stroke:var(--meridian); stroke-width: 2px;" />
+
+                            <!-- Labels -->
+                            <text x="30" y="43" class="diagram-label">TRAVEL RISK</text>
+                            <text x="30" y="103" class="diagram-label">HEALTH INFRA</text>
+                            <text x="30" y="163" class="diagram-label">ENV STABILITY</text>
+
+                            <text x="320" y="104" class="diagram-label center" style="font-size:12px;">SCORE</text>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SCORING ARCHITECTURE / PILLARS -->
+        <section class="pillars antigravity-reveal">
+            <div class="engine-wrapper">
+                <div class="section-label">SCORING ARCHITECTURE — V2.1</div>
+                <div class="pillars-grid">
+
+                    <div class="pillar-card antigravity-reveal" style="transition-delay: 0.1s">
+                        <div class="pillar-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="1.5">
+                                <circle cx="12" cy="12" r="10" />
+                                <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="pillar-title">Travel Risk</h3>
+                            <p class="pillar-desc">Real-time synthesis of geopolitical volatility, civil unrest
+                                probability, and diplomatic standing to assess physical security environments.</p>
+                        </div>
+                        <div class="pillar-score">
+                            <span class="pillar-score-label">SIGNAL STRENGTH</span>
+                            <span class="pillar-score-value count-up" data-target="92">0</span>
+                        </div>
+                    </div>
+
+                    <div class="pillar-card antigravity-reveal" style="transition-delay: 0.2s">
+                        <div class="pillar-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="1.5">
+                                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="pillar-title">Health Infrastructure</h3>
+                            <p class="pillar-desc">Evaluation of medical facility density, specialist availability, and
+                                chronic disease management capacity for long-term residency.</p>
+                        </div>
+                        <div class="pillar-score">
+                            <span class="pillar-score-label">SIGNAL STRENGTH</span>
+                            <span class="pillar-score-value count-up" data-target="88">0</span>
+                        </div>
+                    </div>
+
+                    <div class="pillar-card antigravity-reveal" style="transition-delay: 0.3s">
+                        <div class="pillar-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="1.5">
+                                <path d="M2 12h20" />
+                                <path d="M12 2v20" />
+                                <path d="m4.93 4.93 14.14 14.14" />
+                                <path d="m19.07 4.93-14.14 14.14" />
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="pillar-title">Env Stability</h3>
+                            <p class="pillar-desc">Algorithmic risk assessment of extreme weather frequency, ecological
+                                resilience, and long-term climate vulnerability indices.</p>
+                        </div>
+                        <div class="pillar-score">
+                            <span class="pillar-score-label">SIGNAL STRENGTH</span>
+                            <span class="pillar-score-value count-up" data-target="76">0</span>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- ENGINE DEMO -->
+        <section id="engine" class="engine-section antigravity-reveal">
+            <div class="engine-wrapper">
+                <div class="section-label">SCORING ENGINE — LIVE DEMO</div>
+
+                <div class="engine-panel">
+                    <div class="engine-grid">
+
+                        <!-- INPUT PANEL -->
+                        <div class="input-panel">
+                            <div class="panel-title">
+                                <span class="dot"></span>
+                                CONFIGURE ANALYSIS
+                            </div>
+
+                            <!-- Country Selector -->
+                            <div class="field-group">
+                                <label class="field-label" for="country-input">Destination Countries <span
+                                        style="color:var(--ink)">(max 5)</span></label>
+                                <div class="country-input-wrap" id="country-wrap"
+                                    onclick="document.getElementById('country-input').focus()">
+                                    <div class="tags-row" id="tags-row"></div>
+                                    <input id="country-input" class="country-text-input" type="text"
+                                        placeholder="Type a country name…" autocomplete="off" aria-label="Add country"
+                                        aria-autocomplete="list" aria-controls="country-dropdown" />
+                                    <div class="country-dropdown" id="country-dropdown" role="listbox"></div>
+                                </div>
+                                <div class="input-hint">Select up to 5 countries. Duplicates are prevented.</div>
+                            </div>
+
+                            <!-- Risk Tolerance -->
+                            <div class="field-group">
+                                <div class="field-label" id="risk-label">Risk Tolerance</div>
+                                <div class="pill-group" role="group" aria-labelledby="risk-label">
+                                    <button class="pill" data-group="risk" data-value="low"
+                                        onclick="selectPill(this)">Conservative</button>
+                                    <button class="pill active" data-group="risk" data-value="moderate"
+                                        onclick="selectPill(this)">Moderate</button>
+                                    <button class="pill" data-group="risk" data-value="high"
+                                        onclick="selectPill(this)">Aggressive</button>
+                                </div>
+                            </div>
+
+                            <!-- Duration -->
+                            <div class="field-group">
+                                <div class="field-label" id="duration-label">Duration</div>
+                                <div class="pill-group" role="group" aria-labelledby="duration-label">
+                                    <button class="pill" data-group="duration" data-value="short-term"
+                                        onclick="selectPill(this)">Short-Term</button>
+                                    <button class="pill active" data-group="duration" data-value="long-term"
+                                        onclick="selectPill(this)">Long-Term</button>
+                                </div>
+                            </div>
+
+                            <div class="validation-msg" id="validation-msg" role="alert" aria-live="polite"></div>
+
+                            <button class="submit-btn" id="submit-btn" onclick="runAnalysis()">
+                                <span class="spinner"></span>
+                                <span class="btn-text">ANALYZE DESTINATIONS →</span>
+                            </button>
+                            <div class="input-hint" style="margin-top: 16px; text-align: center;">Mock engine. Returns
+                                synthetic composite scores.</div>
+                        </div>
+
+                        <!-- RESULTS PANEL -->
+                        <div class="results-panel" id="results-panel">
+                            <!-- loading overlay -->
+                            <div class="loading-overlay" id="loading-overlay" aria-live="polite"
+                                aria-label="Analyzing destinations">
+                                <div class="loading-ring"></div>
+                                <div class="loading-text">RUNNING ENGINE…</div>
+                            </div>
+
+                            <!-- empty state -->
+                            <div class="empty-state" id="empty-state">
+                                <div class="empty-icon">
+                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2" xmlns="http://www.w3.org/2000/svg">
+                                        <circle cx="12" cy="12" r="10" />
+                                        <line x1="2" y1="12" x2="22" y2="12" />
+                                        <path
+                                            d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                                    </svg>
+                                </div>
+                                <p>SELECT COUNTRIES AND<br>CONFIGURE YOUR PARAMETERS<br>TO BEGIN ANALYSIS</p>
+                            </div>
+
+                            <!-- results will be injected here -->
+                            <div id="results-container"
+                                style="display:none; display:flex; flex-direction:column; gap:24px; flex:1;"></div>
+                        </div>
+
+                    </div><!-- /engine-grid -->
+                </div><!-- /engine-panel -->
+
+            </div>
+        </section>
+
+        <!-- CTA SECTION -->
+        <section class="cta-section antigravity-reveal">
+            <div class="cta-map-bg"></div>
+            <div class="cta-content">
+                <h2 class="cta-headline">WHERE WILL<br>YOU LAND?</h2>
+                <p class="cta-sub">Join 12,400 analysts and relocators using GEOSIFT to make their next move.</p>
+
+                <form class="cta-form" onsubmit="event.preventDefault(); alert('Request sent!');">
+                    <div class="cta-input-group">
+                        <input type="email" class="cta-input" placeholder="ENTER YOUR EMAIL_" required
+                            aria-label="Email address for early access" />
+                    </div>
+                    <button type="submit" class="cta-btn">REQUEST EARLY ACCESS</button>
+                </form>
+
+                <div class="trust-signals">
+                    <span>NO CREDIT CARD</span>
+                    <span>·</span>
+                    <span>CANCEL ANYTIME</span>
+                    <span>·</span>
+                    <span>ENTERPRISE PLANS AVAILABLE</span>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="site-footer">
+        <div class="footer-top-rule"></div>
+        <div class="footer-grid">
+            <div class="footer-brand">
+                <div class="logo">GEO<span>SIFT</span></div>
+                <div class="footer-tagline">Global Relocation Intelligence</div>
+                <p class="footer-desc">Precision infrastructure for individuals and enterprises making high-stakes
+                    relocation decisions.</p>
+            </div>
+
+            <div>
+                <h3 class="footer-col-title">Product</h3>
+                <nav class="footer-nav">
+                    <a href="#">How It Works</a>
+                    <a href="#">API Docs</a>
+                    <a href="#">Pricing</a>
+                    <a href="#">Changelog</a>
+                </nav>
+            </div>
+
+            <div>
+                <h3 class="footer-col-title">Company</h3>
+                <nav class="footer-nav">
+                    <a href="#">About</a>
+                    <a href="#">Careers</a>
+                    <a href="#">Press</a>
+                    <a href="#">Contact</a>
+                </nav>
+            </div>
+
+            <div>
+                <h3 class="footer-col-title">Legal</h3>
+                <nav class="footer-nav">
+                    <a href="#">Privacy Policy</a>
+                    <a href="#">Terms of Service</a>
+                </nav>
+                <div class="social-links">
+                    <a href="#" aria-label="Twitter">TW</a>
+                    <a href="#" aria-label="LinkedIn">LI</a>
+                    <a href="#" aria-label="Github">GH</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer-bottom">
+            <div class="footer-inner">
+                <div class="footer-copy">© 2025 GEOSIFT INC. ALL RIGHTS RESERVED.</div>
+                <div class="footer-ticker">
+                    <div class="ticker-inner">
+                        TRAVEL RISK · HEALTH INFRASTRUCTURE · ENVIRONMENTAL STABILITY · 195 NATIONS · REAL-TIME DATA ·
+                        GEOSIFT ENGINE V2.1 · TRAVEL RISK · HEALTH INFRASTRUCTURE · ENVIRONMENTAL STABILITY ·
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        /* ── COUNTRY DATA (ISO3 lookup) ─────────────────────────── */
+        const COUNTRIES = [
+            { name: 'Afghanistan', code: 'AFG' }, { name: 'Albania', code: 'ALB' },
+            { name: 'Algeria', code: 'DZA' }, { name: 'Argentina', code: 'ARG' },
+            { name: 'Australia', code: 'AUS' }, { name: 'Austria', code: 'AUT' },
+            { name: 'Belgium', code: 'BEL' }, { name: 'Brazil', code: 'BRA' },
+            { name: 'Canada', code: 'CAN' }, { name: 'Chile', code: 'CHL' },
+            { name: 'China', code: 'CHN' }, { name: 'Colombia', code: 'COL' },
+            { name: 'Czech Republic', code: 'CZE' }, { name: 'Denmark', code: 'DNK' },
+            { name: 'Egypt', code: 'EGY' }, { name: 'Finland', code: 'FIN' },
+            { name: 'France', code: 'FRA' }, { name: 'Germany', code: 'DEU' },
+            { name: 'Ghana', code: 'GHA' }, { name: 'Greece', code: 'GRC' },
+            { name: 'Hungary', code: 'HUN' }, { name: 'India', code: 'IND' },
+            { name: 'Indonesia', code: 'IDN' }, { name: 'Ireland', code: 'IRL' },
+            { name: 'Israel', code: 'ISR' }, { name: 'Italy', code: 'ITA' },
+            { name: 'Japan', code: 'JPN' }, { name: 'Kenya', code: 'KEN' },
+            { name: 'Malaysia', code: 'MYS' }, { name: 'Mexico', code: 'MEX' },
+            { name: 'Morocco', code: 'MAR' }, { name: 'Netherlands', code: 'NLD' },
+            { name: 'New Zealand', code: 'NZL' }, { name: 'Nigeria', code: 'NGA' },
+            { name: 'Norway', code: 'NOR' }, { name: 'Pakistan', code: 'PAK' },
+            { name: 'Peru', code: 'PER' }, { name: 'Philippines', code: 'PHL' },
+            { name: 'Poland', code: 'POL' }, { name: 'Portugal', code: 'PRT' },
+            { name: 'Romania', code: 'ROU' }, { name: 'Saudi Arabia', code: 'SAU' },
+            { name: 'Singapore', code: 'SGP' }, { name: 'South Africa', code: 'ZAF' },
+            { name: 'South Korea', code: 'KOR' }, { name: 'Spain', code: 'ESP' },
+            { name: 'Sweden', code: 'SWE' }, { name: 'Switzerland', code: 'CHE' },
+            { name: 'Thailand', code: 'THA' }, { name: 'Turkey', code: 'TUR' },
+            { name: 'Ukraine', code: 'UKR' }, { name: 'United Arab Emirates', code: 'ARE' },
+            { name: 'United Kingdom', code: 'GBR' }, { name: 'United States', code: 'USA' },
+            { name: 'Vietnam', code: 'VNM' }, { name: 'Zimbabwe', code: 'ZWE' },
+        ];
+
+        /* ── STATE ──────────────────────────────────────────────── */
+        let selectedCountries = []; // [{ name, code }]
+        let selectedRisk = 'moderate';
+        let selectedDuration = 'long-term';
+        let isLoading = false;
+        let lastPayloadKey = null;
+
+        /* ── PILL SELECT ────────────────────────────────────────── */
+        function selectPill(el) {
+            const group = el.dataset.group;
+            document.querySelectorAll(`.pill[data-group="${group}"]`).forEach(p => p.classList.remove('active'));
+            el.classList.add('active');
+            if (group === 'risk') selectedRisk = el.dataset.value;
+            if (group === 'duration') selectedDuration = el.dataset.value;
+        }
+
+        /* ── COUNTRY INPUT ──────────────────────────────────────── */
+        const input = document.getElementById('country-input');
+        const dropdown = document.getElementById('country-dropdown');
+        const tagsRow = document.getElementById('tags-row');
+
+        input.addEventListener('input', () => {
+            const q = input.value.trim().toLowerCase();
+            if (!q) { dropdown.innerHTML = ''; return; }
+            const matches = COUNTRIES.filter(c =>
+                c.name.toLowerCase().includes(q) &&
+                !selectedCountries.find(s => s.code === c.code)
+            ).slice(0, 7);
+            dropdown.innerHTML = matches.map(c => `
+    <div class="dropdown-item" role="option" tabindex="0" onclick="addCountry('${c.code}','${c.name.replace(/'/g, "\\'")}')">
+      <span class="iso">${c.code}</span>
+      <span>${c.name}</span>
+    </div>
+  `).join('');
+        });
+
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Escape') dropdown.innerHTML = '';
+        });
+
+        document.addEventListener('click', e => {
+            if (!e.target.closest('#country-wrap')) dropdown.innerHTML = '';
+        });
+
+        function addCountry(code, name) {
+            if (selectedCountries.find(c => c.code === code)) return; // duplicate guard
+            if (selectedCountries.length >= 5) {
+                showValidation('Maximum 5 countries allowed.');
+                return;
+            }
+            selectedCountries.push({ code, name });
+            renderTags();
+            input.value = '';
+            dropdown.innerHTML = '';
+            clearValidation();
+        }
+
+        function removeCountry(code) {
+            selectedCountries = selectedCountries.filter(c => c.code !== code);
+            renderTags();
+        }
+
+        function renderTags() {
+            tagsRow.innerHTML = selectedCountries.map(c => `
+    <span class="tag">
+      ${c.name}
+      <button class="tag-remove" onclick="removeCountry('${c.code}')" aria-label="Remove ${c.name}">×</button>
+    </span>
+  `).join('');
+        }
+
+        /* ── VALIDATION ─────────────────────────────────────────── */
+        function showValidation(msg) {
+            document.getElementById('validation-msg').textContent = msg;
+        }
+        function clearValidation() {
+            document.getElementById('validation-msg').textContent = '';
+        }
+
+        /* ── SUBMIT ─────────────────────────────────────────────── */
+        async function runAnalysis() {
+            clearValidation();
+            if (selectedCountries.length === 0) {
+                showValidation('Please add at least one country to analyze.');
+                return;
+            }
+
+            // Duplicate submission guard
+            const payloadKey = JSON.stringify({
+                countries: selectedCountries.map(c => c.code).sort(),
+                risk: selectedRisk,
+                duration: selectedDuration
+            });
+            if (payloadKey === lastPayloadKey) {
+                showValidation('This exact analysis has already been submitted. Adjust parameters to re-run.');
+                return;
+            }
+            lastPayloadKey = payloadKey;
+
+            setLoading(true);
+
+            const payload = {
+                countries: selectedCountries.map(c => c.code),
+                risk_tolerance: selectedRisk,
+                duration: selectedDuration
+            };
+
+            try {
+                const res = await fetch("http://127.0.0.1:8000/api/analyze", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error(errData.detail || "Backend error");
+                }
+
+                const data = await res.json();
+                renderResults(data);
+            } catch (err) {
+                renderError(err.message || 'Connection failed. Please check your network and try again.');
+            } finally {
+                setLoading(false);
+            }
+        }
+
+
+
+        /* ── LOADING STATE ──────────────────────────────────────── */
+        function setLoading(state) {
+            isLoading = state;
+            const btn = document.getElementById('submit-btn');
+            const overlay = document.getElementById('loading-overlay');
+            btn.disabled = state;
+            btn.classList.toggle('loading', state);
+            overlay.classList.toggle('active', state);
+        }
+
+        /* ── RENDER RESULTS ─────────────────────────────────────── */
+        function renderResults(data) {
+            const container = document.getElementById('results-container');
+            const empty = document.getElementById('empty-state');
+
+            empty.style.display = 'none';
+            container.style.display = 'flex';
+            container.innerHTML = '';
+
+            if (!data.results || data.results.length === 0) {
+                renderError('ENGINE RETURNED NO RESULTS — ADJUST PARAMETERS');
+                return;
+            }
+
+            // Results header
+            const header = document.createElement('div');
+            header.className = 'results-header';
+            header.innerHTML = `
+    <div class="results-title">RANKED DESTINATIONS</div>
+    <div class="results-count">${data.results.length} RESULT${data.results.length !== 1 ? 'S' : ''}</div>
+  `;
+            container.appendChild(header);
+
+            // Result cards
+            data.results.forEach(r => {
+                container.appendChild(buildCard(r));
+            });
+
+            // Metadata
+            if (data.metadata) {
+                const meta = document.createElement('div');
+                meta.className = 'metadata-strip';
+                meta.innerHTML = `
+      <span class="meta-item"><span class="meta-dot hit"></span>CACHE HITS: ${data.metadata.cache_hits.length}</span>
+      <span class="meta-item"><span class="meta-dot miss"></span>CACHE MISSES: ${data.metadata.cache_misses.length}</span>
+      <span class="meta-item">MISSING METRICS: ${data.metadata.missing_metrics.length}</span>
+    `;
+                container.appendChild(meta);
+            }
+
+            // Animate bars and dials after render
+            requestAnimationFrame(() => {
+                document.querySelectorAll('.bar-fill').forEach(bar => {
+                    bar.style.width = bar.dataset.val + '%';
+                });
+                document.querySelectorAll('.dial-fill').forEach(circle => {
+                    circle.style.strokeDashoffset = circle.dataset.offset;
+                });
+                document.querySelectorAll('.dial-score-text').forEach(el => {
+                    animateCount(el, 0, parseFloat(el.dataset.target), 1200);
+                });
+            });
+        }
+
+        function buildCard(r) {
+            const rankClass = r.rank <= 3 ? `rank-${r.rank}` : 'rank-other';
+            const rankLabel = r.rank === 1 ? '▲ TOP RANKED' : r.rank === 2 ? '▲ 2ND' : r.rank === 3 ? '▲ 3RD' : `#${r.rank}`;
+
+            const circum = 2 * Math.PI * 28; // r=28
+            const score = r.overall_score || 0;
+            const dashOffset = circum * (1 - score / 100);
+
+            const hasPartial = r.sub_scores &&
+                Object.values(r.sub_scores).some(v => v === null || v === undefined);
+
+            const subScoreLabels = {
+                travel_risk: 'TRAVEL RISK',
+                health_infra: 'HEALTH INFRA',
+                env_stability: 'ENV STABILITY'
+            };
+
+            const card = document.createElement('div');
+            card.className = `result-card ${rankClass}`;
+
+            card.innerHTML = `
+    <div class="card-top">
+      <div class="card-identity">
+        <div class="rank-badge ${rankClass}">${rankLabel}</div>
+        <div class="country-name">${r.country_name || '—'}</div>
+        <div class="country-code">${r.country_code || ''}</div>
+      </div>
+      <div class="score-dial-wrap">
+        <div class="score-dial" role="img" aria-label="Overall score: ${score}">
+          <svg width="68" height="68" viewBox="0 0 68 68">
+            <circle class="dial-bg" cx="34" cy="34" r="28" stroke-width="4" fill="none"/>
+            <circle class="dial-fill" cx="34" cy="34" r="28" stroke-width="4" fill="none"
+              stroke-dasharray="${circum}"
+              stroke-dashoffset="${circum}"
+              data-offset="${dashOffset}"
+            />
+          </svg>
+          <div class="dial-score-text" data-target="${score}">0</div>
+        </div>
+        <div class="dial-label-text">SCORE</div>
+      </div>
+    </div>
+
+    ${hasPartial ? `<div class="partial-warning">⚠ PARTIAL DATA — some metrics unavailable</div>` : ''}
+
+    <div class="sub-scores">
+      ${r.sub_scores ? Object.entries(r.sub_scores).map(([key, val]) => {
+                const safeVal = val ?? 0;
+                const isNull = val === null || val === undefined;
+                return `
+          <div class="sub-score-row">
+            <span class="sub-label">${subScoreLabels[key] || key}</span>
+            <div class="bar-track">
+              <div class="bar-fill ${key}" data-val="${safeVal}" style="width:0%"></div>
+            </div>
+            <span class="sub-value">${isNull ? '—' : safeVal}</span>
+          </div>
+        `;
+            }).join('') : '<div style="color:var(--ink);font-size:12px;">Sub-score data unavailable</div>'}
+    </div>
+
+    ${r.explanation ? `<div class="explanation">"${r.explanation}"</div>` : ''}
+  `;
+
+            return card;
+        }
+
+        function renderError(msg) {
+            const container = document.getElementById('results-container');
+            const empty = document.getElementById('empty-state');
+            empty.style.display = 'none';
+            container.style.display = 'flex';
+            container.innerHTML = `
+    <div class="error-state" role="alert">
+      <div class="error-title">⚠ ENGINE ERROR</div>
+      <div class="error-msg">${msg}</div>
+    </div>
+  `;
+        }
+
+        /* ── COUNT-UP ANIMATION ─────────────────────────────────── */
+        function animateCount(el, from, to, duration) {
+            const start = performance.now();
+            function frame(now) {
+                const progress = Math.min((now - start) / duration, 1);
+                const ease = 1 - Math.pow(1 - progress, 3);
+                el.textContent = (from + (to - from) * ease).toFixed(1);
+                if (progress < 1) requestAnimationFrame(frame);
+            }
+            requestAnimationFrame(frame);
+        }
+
+        /* ── INTERSECTION OBSERVER (Scroll Reveals) ──────────────── */
+        const observerOptions = {
+            root: null,
+            rootMargin: '0px',
+            threshold: 0.15
+        };
+
+        const observer = new IntersectionObserver((entries, observer) => {
+            entries.forEach(entry => {
+                const target = entry.target;
+
+                // Respect prefers-reduced-motion
+                const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+                if (entry.isIntersecting) {
+                    if (prefersReducedMotion) {
+                        target.style.opacity = '1';
+                        target.style.transform = 'none';
+                        target.classList.add('visible');
+                    } else {
+                        target.classList.add('visible');
+                    }
+
+                    // Trigger counters inside pillars if applicable
+                    if (target.classList.contains('pillar-card')) {
+                        const counter = target.querySelector('.count-up');
+                        if (counter && !counter.dataset.animated) {
+                            const targetVal = parseFloat(counter.dataset.target);
+                            animateCount(counter, 0, targetVal, 1500);
+                            counter.dataset.animated = 'true';
+                        }
+                    }
+
+                    // Trigger SVG animation inside brand story if applicable
+                    if (target.classList.contains('brand-story')) {
+                        const svg = target.querySelector('.diagram-svg');
+                        if (svg) svg.classList.add('visible');
+                    }
+
+                    observer.unobserve(target); // Only animate once
+                }
+            });
+        }, observerOptions);
+
+        // Initialize observer on all .antigravity-reveal elements
+        document.addEventListener('DOMContentLoaded', () => {
+            const revealElements = document.querySelectorAll('.antigravity-reveal');
+            revealElements.forEach(el => observer.observe(el));
+        });
+
+        /* ── CINEMATIC HERO SEQUENCE (Vanilla JS) ──────────────── */
+        const frameCount = 40;
+        const currentFrame = index => (
+            `assets/hero-sequence/ezgif-frame-${index.toString().padStart(3, '0')}.jpg`
+        );
+
+        const canvas = document.getElementById("hero-canvas");
+        const context = canvas ? canvas.getContext("2d") : null;
+        const canvasHero = document.getElementById("cinematic-hero");
+        const heroContent = document.querySelector(".hero-content");
+
+        const images = [];
+        let lastScrollFraction = 0;
+
+        const preloadImages = () => {
+            for (let i = 1; i <= frameCount; i++) {
+                const img = new Image();
+                img.src = currentFrame(i);
+                images.push(img);
+            }
+        };
+
+        const renderFrame = (img, ctx) => {
+            if (!img || !ctx) return;
+            // Draw image covering the canvas (object-fit:cover equivalent)
+            const hRatio = canvas.width / img.width;
+            const vRatio = canvas.height / img.height;
+            const ratio = Math.max(hRatio, vRatio);
+            const centerShift_x = (canvas.width - img.width * ratio) / 2;
+            const centerShift_y = (canvas.height - img.height * ratio) / 2;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, img.width, img.height,
+                centerShift_x, centerShift_y, img.width * ratio, img.height * ratio);
+        };
+
+        if (canvas) {
+            // Setup canvas constraints 
+            const resizeCanvas = () => {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                if (images.length > 0) {
+                    const idx = Math.min(frameCount - 1, Math.floor(lastScrollFraction * frameCount));
+                    if (images[idx] && images[idx].complete) {
+                        renderFrame(images[idx], context);
+                    }
+                }
+            };
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+
+            // Preload sequentially to ensure early frames load first
+            preloadImages();
+
+            // Draw first frame once loaded
+            if (images[0]) {
+                images[0].onload = () => {
+                    renderFrame(images[0], context);
+                };
+            }
+
+            // Bind Scroll Event
+            window.addEventListener('scroll', () => {
+                const scrollTop = window.scrollY;
+                const maxScroll = canvasHero.offsetHeight - window.innerHeight;
+                let scrollFraction = scrollTop / maxScroll;
+
+                if (scrollFraction < 0) scrollFraction = 0;
+                if (scrollFraction > 1) scrollFraction = 1;
+
+                lastScrollFraction = scrollFraction;
+                const frameIndex = Math.min(frameCount - 1, Math.floor(scrollFraction * frameCount));
+
+                requestAnimationFrame(() => {
+                    if (images[frameIndex] && images[frameIndex].complete) {
+                        renderFrame(images[frameIndex], context);
+                    }
+                });
+
+                // Fade in text at end of scroll (over 85% completion)
+                if (scrollFraction > 0.85) {
+                    heroContent.classList.add('visible');
+                } else {
+                    heroContent.classList.remove('visible');
+                }
+            });
+        }
+    </script>
+</body>
+
+</html>
