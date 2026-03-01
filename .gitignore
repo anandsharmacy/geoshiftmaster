@@ -1,7 +1,5 @@
-__pycache__/
-*.py[cod]
-*$py.class
-Backend/full_server_debug.log
-Backend/server_logs.txt
-.env
-.DS_Store
+# Dependencies
+node_modules/
+
+# Build output
+dist/

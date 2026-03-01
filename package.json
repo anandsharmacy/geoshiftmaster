@@ -1,0 +1,11 @@
+{
+  "name": "geosift",
+  "private": true,
+  "devDependencies": {
+    "vercel": "^50.25.4"
+  },
+  "scripts": {
+    "build": "mkdir -p dist && cp -r 'Documents/Antigravity test'/* dist/",
+    "vercel-build": "npm run build"
+  }
+}
